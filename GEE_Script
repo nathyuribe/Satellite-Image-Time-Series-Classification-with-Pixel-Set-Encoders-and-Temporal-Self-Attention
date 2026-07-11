@@ -1,0 +1,158 @@
+// Import data
+var points = ee.FeatureCollection("projects/mastodon-instance-415811/assets/TreeSatAI"); 
+var unique_species = points.aggregate_array('l3_species').distinct();
+
+// Region of Interest (ROI) of Germany
+var Boundary = ee.FeatureCollection("USDOS/LSIB_SIMPLE/2017");
+var boundary = Boundary.select("country_co");
+var roi_germany = boundary.filter(ee.Filter.eq('country_co','GM'));
+
+// Sentinel-2 spectral bands
+var commonBands = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B11', 'B12', 'MSK_CLDPRB'];
+                  
+/***Calculate Vegetation Indices***/
+var addNDVI = function(image) {
+  return image.addBands(image.normalizedDifference(['B8', 'B4']).rename('NDVI'));
+};
+
+var addEVI = function(image) {
+  var evi = image.expression(
+    '2.5 * ((NIR - red) / (NIR + 6 * red - 7.5 * blue + 1))',
+    {'red': image.select('B4'), 'NIR': image.select('B8'), 'blue': image.select('B2')}
+  ).rename('EVI');
+  return image.addBands(evi);
+};
+
+var addEVI2 = function(image) {
+  var evi2 = image.expression(
+    '2.5 * ((NIR - red) / (NIR + 2.4 * red + 1))',
+    {'red': image.select('B4'), 'NIR': image.select('B8')}
+  ).rename('EVI2');
+  return image.addBands(evi2);
+};
+
+var addSAVI = function(image) {
+  var savi = image.expression(
+    '((NIR - red) / (NIR + red + L)) * (1 + L)',
+    {'red': image.select('B4'), 'NIR': image.select('B8'), 'L': 0.5}
+  ).rename('SAVI');
+  return image.addBands(savi);
+};
+
+var addNDWI = function(image) {
+  return image.addBands(image.normalizedDifference(['B8', 'B11']).rename('NDWI'));
+};
+
+// Remove clouds
+function maskS2clouds(image) {
+  var cloudProb = image.select('MSK_CLDPRB');
+  var mask = cloudProb.lt(20);
+  return image.updateMask(mask).divide(10000);
+}
+
+// Function to access Sentinel-2 data
+function processMonthlyData(startDate, endDate, cloudThreshold) {
+    return ee.ImageCollection('COPERNICUS/S2_SR')
+        .filterBounds(roi_germany)
+        .filterDate(startDate, endDate)
+        .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', cloudThreshold))
+        .map(function(image) { return image.select(commonBands); })
+        .map(maskS2clouds)
+        .map(addNDVI).map(addEVI).map(addEVI2).map(addSAVI).map(addNDWI)
+        .median();
+}
+
+/***Process monthly data***/
+var s2_Mar = processMonthlyData('2022-03-01', '2022-03-31', 30);
+var s2_Apr = processMonthlyData('2022-04-01', '2022-04-30', 30);
+var s2_May = processMonthlyData('2022-05-01', '2022-05-31', 30);
+var s2_Jun = processMonthlyData('2022-06-01', '2022-06-30', 30);
+var s2_Jul = processMonthlyData('2022-07-01', '2022-07-31', 30);
+var s2_Aug = processMonthlyData('2022-08-01', '2022-08-31', 30);
+var s2_Sep = processMonthlyData('2022-09-01', '2022-09-30', 30);
+var s2_Oct = processMonthlyData('2022-10-01', '2022-10-31', 30);
+
+var s2 = s2_Mar.addBands(s2_Apr).addBands(s2_May).addBands(s2_Jun)
+              .addBands(s2_Jul).addBands(s2_Aug).addBands(s2_Sep).addBands(s2_Oct);
+
+var Bands = [
+  'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B11', 'B12', 'NDVI', 'EVI', 'EVI2', 'SAVI', 'NDWI',
+  'B2_1', 'B3_1', 'B4_1', 'B5_1', 'B6_1', 'B7_1', 'B8_1', 'B8A_1', 'B11_1', 'B12_1', 'NDVI_1', 'EVI_1', 'EVI2_1', 'SAVI_1', 'NDWI_1',
+  'B2_2', 'B3_2', 'B4_2', 'B5_2', 'B6_2', 'B7_2', 'B8_2', 'B8A_2', 'B11_2', 'B12_2', 'NDVI_2', 'EVI_2', 'EVI2_2', 'SAVI_2', 'NDWI_2',
+  'B2_3', 'B3_3', 'B4_3', 'B5_3', 'B6_3', 'B7_3', 'B8_3', 'B8A_3', 'B11_3', 'B12_3', 'NDVI_3', 'EVI_3', 'EVI2_3', 'SAVI_3', 'NDWI_3',
+  'B2_4', 'B3_4', 'B4_4', 'B5_4', 'B6_4', 'B7_4', 'B8_4', 'B8A_4', 'B11_4', 'B12_4', 'NDVI_4', 'EVI_4', 'EVI2_4', 'SAVI_4', 'NDWI_4',
+  'B2_5', 'B3_5', 'B4_5', 'B5_5', 'B6_5', 'B7_5', 'B8_5', 'B8A_5', 'B11_5', 'B12_5', 'NDVI_5', 'EVI_5', 'EVI2_5', 'SAVI_5', 'NDWI_5',
+  'B2_6', 'B3_6', 'B4_6', 'B5_6', 'B6_6', 'B7_6', 'B8_6', 'B8A_6', 'B11_6', 'B12_6', 'NDVI_6', 'EVI_6', 'EVI2_6', 'SAVI_6', 'NDWI_6',
+  'B2_7', 'B3_7', 'B4_7', 'B5_7', 'B6_7', 'B7_7', 'B8_7', 'B8A_7', 'B11_7', 'B12_7', 'NDVI_7', 'EVI_7', 'EVI2_7', 'SAVI_7', 'NDWI_7'
+];
+
+// Select bands BEFORE creating neighborhood arrays to save memory
+var s2_select = s2.select(Bands);
+
+// Create the kernel and the neighborhood image
+var kernel = ee.Kernel.rectangle(5, 5); 
+var neighborImg = s2_select.neighborhoodToArray(kernel);
+
+// Hierarchical Labels
+var treeHierarchy = {
+  'broadleaf': {
+    'beech': ['european beech'],
+    'oak': ['sessile oak', 'english oak', 'red oak'],
+    'long-lived deciduous': ['sycamore maple', 'european ash', 'linden', 'cherry'],
+    'short-lived deciduous': ['alder', 'poplar', 'birch']
+  },
+  'needleleaf': {
+    'fir': ['silver fir'],
+    'larch': ['european larch', 'japanese larch'],
+    'spruce': ['norway spruce'],
+    'pine': ['scots pine', 'black pine', 'weymouth pine'],
+    'douglas fir': ['douglas fir']
+  }
+};
+
+function getSpeciesHierarchy(speciesName) {
+  var result = { level1: 'unknown', level2: 'unknown' };
+  Object.keys(treeHierarchy).forEach(function (level1) {
+    var level2Dict = treeHierarchy[level1];
+    Object.keys(level2Dict).forEach(function (level2) {
+      if (level2Dict[level2].indexOf(speciesName) !== -1) {
+        result = { level1: level1, level2: level2 };
+      }
+    });
+  });
+  return result;
+}
+
+// Iterate through each unique species
+unique_species.evaluate(function (speciesList) {
+  if (!speciesList) return;
+  
+  speciesList.forEach(function (species) {
+    var speciesCollection = points.filterMetadata('l3_species', 'equals', species);
+    var safeSpeciesName = species.replace(/ /g, '');
+    var hierarchyInfo = getSpeciesHierarchy(species);
+    var folderPath = hierarchyInfo.level1 + '_' + hierarchyInfo.level2 + '_' + safeSpeciesName;
+
+    // FIX: Map over the collection to reduce each point individually
+    // This prevents the "Computed value too large" error by avoiding a single massive join
+    var samples = speciesCollection.map(function(feature) {
+      var dict = neighborImg.reduceRegion({
+        reducer: ee.Reducer.first(),
+        geometry: feature.geometry(),
+        scale: 10,
+        crs: 'EPSG:25832',
+        tileScale: 16
+      });
+      return feature.set(dict);
+    });
+
+    // Export the table
+    Export.table.toDrive({
+      collection: samples,
+      description: 'Export_' + safeSpeciesName,
+      folder: 'TreeSatAI',
+      fileNamePrefix: folderPath,
+      fileFormat: 'GeoJSON'
+    });
+  });
+});
